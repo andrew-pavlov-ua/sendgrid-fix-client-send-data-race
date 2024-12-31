@@ -1,6 +1,7 @@
 package sendgrid
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -9,6 +10,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -1788,6 +1790,85 @@ func Test_test_send_client_with_mail_body_compression_enabled(t *testing.T) {
 	t.Log(response)
 	assert.Equal(t, 202, response.StatusCode, "Wrong status code returned")
 
+}
+
+func TestClient_Send_UniqueConcurrentRequests(t *testing.T) {
+	apiKey := "API"
+	const numRequests = 10
+	var wg sync.WaitGroup
+	errors := make(chan error, numRequests)
+	var mut sync.Mutex
+	correctRequests := 0
+
+	client := NewSendClient(apiKey)
+
+	for i := 0; i < numRequests; i++ {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+
+			from := &mail.Email{
+				Name:    fmt.Sprintf("#%d Sender", i),
+				Address: "sam.doe@example.com",
+			}
+			to := &mail.Email{
+				Name:    fmt.Sprintf("Recipient #%d", i),
+				Address: "jane.doe@example.com",
+			}
+
+			email := &mail.SGMailV3{
+				From: from,
+				Personalizations: []*mail.Personalization{
+					{
+						To:      []*mail.Email{to},
+						Subject: fmt.Sprintf("#%d Hello from thread!", i),
+					},
+				},
+				Content: []*mail.Content{
+					{
+						Type:  "text/plain",
+						Value: fmt.Sprintf("This is a unique message from thread #%d.", i),
+					},
+				},
+			}
+
+			originalRequestBody := mail.GetRequestBody(email)
+
+			response, sentRequestBody, err := client.sendGetSentReqBody(email)
+
+			if err != nil {
+				errors <- fmt.Errorf("goroutine %d: send error: %v", i, err)
+				return
+			}
+
+			if response.StatusCode != 202 {
+				errors <- fmt.Errorf("goroutine %d: unexpected status code: got %d, want 202, Response: %s", i, response.StatusCode, response.Body)
+				return
+			}
+
+			// Check if the request body was modified during sending
+			if !bytes.Equal(originalRequestBody, sentRequestBody) {
+				errors <- fmt.Errorf("goroutine %d: request body was modified during send", i)
+			} else {
+				mut.Lock()
+				correctRequests += 1
+				mut.Unlock()
+			}
+		}(i)
+	}
+
+	wg.Wait()
+	close(errors)
+
+	// Check that all request bodies match the original ones
+	for err := range errors {
+		if err != nil {
+			t.Errorf("Test failed: %v", err)
+		}
+	}
+
+	// Print the number of successful requests
+	fmt.Println("Correct requests: ", correctRequests)
 }
 
 func Test_test_send_client(t *testing.T) {

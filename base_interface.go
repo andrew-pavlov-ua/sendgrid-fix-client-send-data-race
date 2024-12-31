@@ -62,7 +62,7 @@ func (cl *Client) Send(email *mail.SGMailV3) (*rest.Response, error) {
 
 // SendWithContext sends an email through Twilio SendGrid with context.Context.
 func (cl *Client) SendWithContext(ctx context.Context, email *mail.SGMailV3) (*rest.Response, error) {
-	// Clone the client to avoid Race Conditions when creating new thread
+	// Clone the client to avoid Race Conditions when creating new goroutine
 	tempClient := cl.Clone()
 
 	tempClient.Body = mail.GetRequestBody(email)
@@ -84,8 +84,7 @@ func (cl *Client) SendWithContext(ctx context.Context, email *mail.SGMailV3) (*r
 
 		tempClient.Body = gzipped.Bytes()
 	}
-	temp, err := MakeRequestWithContext(ctx, tempClient.Request)
-	return temp, err
+	return MakeRequestWithContext(ctx, tempClient.Request)
 }
 
 // Clone creates a new copy of the client.
@@ -103,6 +102,37 @@ func (cl *Client) Clone() *Client {
 		newClient.Request.Headers[k] = v
 	}
 	return newClient
+}
+
+func (cl *Client) sendGetSentReqBody(email *mail.SGMailV3) (*rest.Response, []byte, error) {
+	return cl.sendWithContextGetSentReqBody(context.Background(), email)
+}
+
+func (cl *Client) sendWithContextGetSentReqBody(ctx context.Context, email *mail.SGMailV3) (*rest.Response, []byte, error) {
+	// Clone the client to avoid Race Conditions when creating new goroutine
+	tempClient := cl.Clone()
+
+	tempClient.Body = mail.GetRequestBody(email)
+	// when Content-Encoding header is set to "gzip"
+	// mail body is compressed using gzip according to
+	// https://docs.sendgrid.com/api-reference/mail-send/mail-send#mail-body-compression
+	if tempClient.Headers["Content-Encoding"] == "gzip" {
+		var gzipped bytes.Buffer
+		gz := gzip.NewWriter(&gzipped)
+		if _, err := gz.Write(tempClient.Body); err != nil {
+			return nil, nil, err
+		}
+		if err := gz.Flush(); err != nil {
+			return nil, nil, err
+		}
+		if err := gz.Close(); err != nil {
+			return nil, nil, err
+		}
+
+		tempClient.Body = gzipped.Bytes()
+	}
+	response, err := MakeRequestWithContext(ctx, tempClient.Request)
+	return response, tempClient.Body, err
 }
 
 // DefaultClient is used if no custom HTTP client is defined

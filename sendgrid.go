@@ -2,8 +2,9 @@ package sendgrid
 
 import (
 	"errors"
-	"github.com/sendgrid/rest"
 	"net/url"
+
+	"github.com/sendgrid/rest"
 )
 
 // sendGridOptions for CreateRequest
