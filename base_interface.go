@@ -73,19 +73,19 @@ func (cl *Client) SendWithContext(ctx context.Context, email *mail.SGMailV3) (*r
 		var gzipped bytes.Buffer
 		gz := gzip.NewWriter(&gzipped)
 		if _, err := gz.Write(tempClient.Body); err != nil {
-			return nil, nil, err
+			return nil, err
 		}
 		if err := gz.Flush(); err != nil {
-			return nil, nil, err
+			return nil, err
 		}
 		if err := gz.Close(); err != nil {
-			return nil, nil, err
+			return nil, err
 		}
 
 		tempClient.Body = gzipped.Bytes()
 	}
 	temp, err := MakeRequestWithContext(ctx, tempClient.Request)
-	return temp, &tempClient.Request, err
+	return temp, err
 }
 
 // Clone creates a new copy of the client.
