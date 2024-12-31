@@ -62,26 +62,47 @@ func (cl *Client) Send(email *mail.SGMailV3) (*rest.Response, error) {
 
 // SendWithContext sends an email through Twilio SendGrid with context.Context.
 func (cl *Client) SendWithContext(ctx context.Context, email *mail.SGMailV3) (*rest.Response, error) {
-	cl.Body = mail.GetRequestBody(email)
+	// Clone the client to avoid Race Conditions when creating new thread
+	tempClient := cl.Clone()
+
+	tempClient.Body = mail.GetRequestBody(email)
 	// when Content-Encoding header is set to "gzip"
 	// mail body is compressed using gzip according to
 	// https://docs.sendgrid.com/api-reference/mail-send/mail-send#mail-body-compression
-	if cl.Headers["Content-Encoding"] == "gzip" {
+	if tempClient.Headers["Content-Encoding"] == "gzip" {
 		var gzipped bytes.Buffer
 		gz := gzip.NewWriter(&gzipped)
-		if _, err := gz.Write(cl.Body); err != nil {
-			return nil, err
+		if _, err := gz.Write(tempClient.Body); err != nil {
+			return nil, nil, err
 		}
 		if err := gz.Flush(); err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 		if err := gz.Close(); err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 
-		cl.Body = gzipped.Bytes()
+		tempClient.Body = gzipped.Bytes()
 	}
-	return MakeRequestWithContext(ctx, cl.Request)
+	temp, err := MakeRequestWithContext(ctx, tempClient.Request)
+	return temp, &tempClient.Request, err
+}
+
+// Clone creates a new copy of the client.
+func (cl *Client) Clone() *Client {
+	newClient := &Client{
+		Request: rest.Request{
+			BaseURL: cl.Request.BaseURL,
+			Headers: make(map[string]string),
+			Method:  cl.Request.Method,
+			Body:    append([]byte{}, cl.Request.Body...),
+		},
+	}
+	// Copy headers
+	for k, v := range cl.Request.Headers {
+		newClient.Request.Headers[k] = v
+	}
+	return newClient
 }
 
 // DefaultClient is used if no custom HTTP client is defined
