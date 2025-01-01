@@ -7,6 +7,4 @@ sendgrid.env
 .vscode
 prism*
 **/.idea/**/*
-go.mod
-go.sum
-.gitignore
+sendgrid.env
