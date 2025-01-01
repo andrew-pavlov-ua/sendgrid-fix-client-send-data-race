@@ -1792,7 +1792,7 @@ func Test_test_send_client_with_mail_body_compression_enabled(t *testing.T) {
 
 }
 
-func TestClient_Send_UniqueConcurrentRequests(t *testing.T) {
+func Test_test_client_send_unique_concurrent_requests(t *testing.T) {
 	apiKey := "SENDGRID_APIKEY"
 	const numRequests = 10
 	var wg sync.WaitGroup
